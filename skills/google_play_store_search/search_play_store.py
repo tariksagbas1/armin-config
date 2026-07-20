@@ -1,32 +1,31 @@
 import sys
 import json
+import argparse
 from google_play_scraper import search
 
 def main():
-    # Verify that a keyword and result count were passed
-    if len(sys.argv) < 3:
-        print(json.dumps({"error": "Keyword and result count required"}))
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Search Google Play Store")
+    parser.add_argument("keyword", type=str, help="Search keyword")
+    parser.add_argument("count", type=int, help="Number of results")
+    parser.add_argument("--country", type=str, default="us",
+                        help="Two-letter country code (us, be, tr, etc.)")
+    parser.add_argument("--lang", type=str, default="en",
+                        help="Language code (en, fr, tr, etc.)")
 
-    keyword = sys.argv[1]
+    args = parser.parse_args()
 
-    try:
-        result_count = int(sys.argv[2])
-        if result_count < 1:
-            raise ValueError
-    except ValueError:
+    if args.count < 1:
         print(json.dumps({"error": "Result count must be a positive integer"}))
         sys.exit(1)
 
     try:
-        # Fetch the requested number of results for the US Google Play market
         results = search(
-            keyword,
-            n_hits=result_count,
-            lang="en",
-            country="us",
+            args.keyword,
+            n_hits=args.count,
+            lang=args.lang,
+            country=args.country,
         )
-        
+
         clean_results = []
         for r in results:
             clean_results.append({
@@ -37,10 +36,9 @@ def main():
                 "installs": r.get("installs"),
                 "is_free": r.get("free")
             })
-            
-        # Print pure JSON so OpenClaw can feed it directly to DeepSeek
+
         print(json.dumps(clean_results, indent=2))
-        
+
     except Exception as e:
         print(json.dumps({"error": str(e)}))
         sys.exit(1)
