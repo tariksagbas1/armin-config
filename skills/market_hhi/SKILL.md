@@ -1,23 +1,56 @@
 ---
-name: calculate_proxy_hhi
-description: Calculates the Herfindahl-Hirschman Index (HHI) to determine market concentration and monopoly dominance based on proxy metrics like reviews or installs.
-parameters:
-  type: object
-  properties:
-    proxy_metrics:
-      type: string
-      description: A comma-separated list of review counts or install estimates for the top competing apps (e.g., "45000, 12000, 5000, 200, 100").
-  required: ["proxy_metrics"]
+name: calculate-hhi
+description: Calculates a proxy Herfindahl-Hirschman Index from consistent competitor metrics and returns concentration statistics without recommendations.
 ---
 
 # Execution
-To run this tool, execute the following command:
-`python3 {baseDir}/scripts/calculate_hhi.py "{{proxy_metrics}}"`
 
-# Market Analysis Guidelines
-1. **Gather Data:** First, use the `play_store_search` or `ios_store_search` tools to retrieve the `reviews_count` or `installs` for the top 10 apps in a niche.
-2. **Calculate HHI:** Extract those numbers and pass them as a comma-separated string to this tool.
-3. **Interpret Output:** 
-   - **Low Concentration (HHI < 1500):** Fragmented market. Highly ideal. Proceed with the vulnerability scan.
-   - **Moderate Concentration (HHI 1500-2500):** Viable. Proceed, but closely examine the top 2 players.
-   - **High Concentration (HHI > 2500):** Monopoly territory. Reject this market entirely unless the dominant player has an average rating below 3.5 stars and glaringly obvious flaws.
+Collect one consistent nonnegative metric for each competitor, then run:
+
+```bash
+python3 "{baseDir}/scripts/calculate_hhi.py" \
+  "<value-1>,<value-2>,<value-3>" \
+  [--labels "<competitor-1>,<competitor-2>,<competitor-3>"] \
+  [--metric-name "<metric>"]
+```
+
+- Values may be a comma-separated list or a JSON numeric array.
+- Do not include thousands separators inside comma-separated values.
+- Labels are optional, but their count must equal the value count.
+- All values must use the same metric, platform, storefront, and measurement
+  basis. Do not mix review counts with install estimates.
+- Use as complete a competitor set as possible. A top-N sample omits the long
+  tail and can materially overstate concentration.
+
+# Data Sources
+
+Metrics may come from `google-play-store-search` or `app-store-search`. Keep
+Google Play and Apple App Store calculations separate. Treat review counts and
+install estimates as proxies rather than verified market shares.
+
+# Output
+
+The script returns:
+
+- Proxy HHI on a 0–10,000 scale
+- Each competitor's proxy share
+- Largest competitor share
+- Effective competitor count
+- Competitor count and total proxy volume
+- A descriptive concentration level using the 2023 DOJ/FTC boundaries:
+  - Below 1,000: `UNCONCENTRATED`
+  - 1,000 through 1,800: `MODERATELY_CONCENTRATED`
+  - Above 1,800: `HIGHLY_CONCENTRATED`
+
+Return these numerical results without market recommendations, opportunity
+claims, `GO` / `NO-GO` decisions, or monopoly claims unless the user explicitly
+requests interpretation.
+
+# Example
+
+```bash
+python3 "{baseDir}/scripts/calculate_hhi.py" \
+  "45000,12000,5000,200,100" \
+  --labels "App A,App B,App C,App D,App E" \
+  --metric-name "review_count"
+```
