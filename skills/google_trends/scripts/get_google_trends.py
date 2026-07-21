@@ -201,6 +201,8 @@ def download_interest_csv(args, explore_url):
             "accept_downloads": True,
             "slow_mo": args.slow_mo,
             "viewport": {"width": 1440, "height": 1000},
+            "ignore_default_args": ["--enable-automation"],
+            "args": ["--disable-blink-features=AutomationControlled"],
         }
         if args.browser_channel != "chromium":
             launch_options["channel"] = args.browser_channel
@@ -210,6 +212,25 @@ def download_interest_csv(args, explore_url):
         )
         try:
             page = context.pages[0] if context.pages else context.new_page()
+            context.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', "
+                "{get: () => undefined})"
+            )
+            api_failures = []
+
+            def record_api_failure(api_response):
+                if (
+                    "/trends/api/" in api_response.url
+                    and api_response.status >= 400
+                ):
+                    failure = {
+                        "status": api_response.status,
+                        "url": api_response.url.split("?", 1)[0],
+                    }
+                    if failure not in api_failures:
+                        api_failures.append(failure)
+
+            page.on("response", record_api_failure)
             response = None
             for attempt in range(args.browser_retries + 1):
                 response = page.goto(
@@ -227,23 +248,46 @@ def download_interest_csv(args, explore_url):
                     "Google returned HTTP 429 after browser retries"
                 )
 
-            button = find_export_button(page, timeout_ms)
-            button.scroll_into_view_if_needed()
+            last_csv_text = ""
+            for download_attempt in range(args.browser_retries + 1):
+                button = find_export_button(page, timeout_ms)
+                button.scroll_into_view_if_needed()
+                page.wait_for_timeout(args.data_wait * 1_000)
 
-            with page.expect_download(timeout=timeout_ms) as download_info:
-                button.click()
+                with page.expect_download(timeout=timeout_ms) as download_info:
+                    button.click()
 
-            download = download_info.value
-            failure = download.failure()
-            if failure:
-                raise RuntimeError(f"Google Trends CSV download failed: {failure}")
+                download = download_info.value
+                failure = download.failure()
+                if failure:
+                    raise RuntimeError(
+                        f"Google Trends CSV download failed: {failure}"
+                    )
 
-            download_path = download.path()
-            if not download_path:
-                raise RuntimeError("Browser download did not produce a file")
-            return Path(download_path).read_text(
-                encoding="utf-8-sig",
-            )
+                download_path = download.path()
+                if not download_path:
+                    raise RuntimeError("Browser download did not produce a file")
+                last_csv_text = Path(download_path).read_text(
+                    encoding="utf-8-sig",
+                )
+
+                try:
+                    rows = list(csv.reader(io.StringIO(last_csv_text)))
+                    find_data_header(rows)
+                    return last_csv_text
+                except ValueError:
+                    if download_attempt < args.browser_retries:
+                        page.reload(
+                            wait_until="domcontentloaded",
+                            timeout=timeout_ms,
+                        )
+
+            if api_failures:
+                raise RuntimeError(
+                    "Google rendered no trend rows; browser API failures: "
+                    f"{api_failures}"
+                )
+            return last_csv_text
         finally:
             context.close()
 
@@ -342,6 +386,12 @@ def create_parser():
         type=non_negative_integer,
         default=3,
         help="Seconds between browser navigation retries (default: 3)",
+    )
+    parser.add_argument(
+        "--data-wait",
+        type=non_negative_integer,
+        default=5,
+        help="Seconds to wait for chart data before export (default: 5)",
     )
     parser.add_argument(
         "--headless",

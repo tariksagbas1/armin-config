@@ -37,6 +37,7 @@ python3 "{baseDir}/scripts/get_google_trends.py" \
   [--slow-mo <milliseconds>] \
   [--browser-retries <count>] \
   [--retry-delay <seconds>] \
+  [--data-wait <seconds>] \
   [--headless]
 ```
 
@@ -63,6 +64,7 @@ python3 "{baseDir}/scripts/get_google_trends.py" \
 - `--browser-timeout`: page/download timeout. Default: `120` seconds.
 - `--slow-mo`: delay between browser actions. Default: `100` milliseconds.
 - Browser navigation retries default to `2`, with `3` seconds between attempts.
+- Chart-data wait defaults to `5` seconds before each CSV export attempt.
 - `--headless`: disables the visible browser. Do not use it when Google blocks
   headless sessions.
 
